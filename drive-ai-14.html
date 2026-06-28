@@ -1,0 +1,1493 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ドライブAI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --border: #1e2229;
+    --accent: #3d6fff;
+    --accent-dim: rgba(61,111,255,0.15);
+    --accent-glow: rgba(61,111,255,0.4);
+    --text: #e8eaf0;
+    --text-dim: #5a6070;
+    --text-mid: #8a94a8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --amber: #f59e0b;
+    --font: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+  /* ── Setup ── */
+  #setup { display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; gap: 24px; min-height: 100vh; max-width: 480px; margin: 0 auto; }
+
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mid); }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+
+  h1 { font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; }
+  h1 span { color: var(--accent); }
+  .desc { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+
+  .field label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mid); margin-bottom: 8px; }
+  .field input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s; }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--text-dim); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .btn-start { width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+  .btn-start:hover { opacity: 0.9; }
+  .btn-start:active { transform: scale(0.98); }
+
+  /* ── Main ── */
+  #main { display: none; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; }
+
+  #cam-wrap { position: relative; height: 220px; background: #000; overflow: hidden; flex-shrink: 0; }
+  #cam { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  #cam-canvas { display: none; }
+
+  /* Status bar */
+  #status-bar { position: absolute; top: 0; left: 0; right: 0; padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%); }
+  .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 5px 10px; font-size: 11px; font-weight: 500; color: var(--text-mid); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+  .dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.thinking { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.speaking { background: var(--amber); animation: pulse 0.6s infinite; }
+  .dot.listening { background: #00e5ff; box-shadow: 0 0 6px #00e5ff; animation: pulse 1s infinite; }
+
+  #location-pill { max-width: 180px; overflow: hidden; }
+  #location-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; display: inline-block; }
+
+  /* Mic visualizer — always-on indicator */
+  #mic-wave {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 24px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #mic-wave.visible { opacity: 1; }
+  #mic-wave span {
+    display: block;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--green);
+    animation: wave 0.8s ease-in-out infinite;
+    min-height: 4px;
+  }
+  #mic-wave span:nth-child(1) { animation-delay: 0s; }
+  #mic-wave span:nth-child(2) { animation-delay: 0.1s; }
+  #mic-wave span:nth-child(3) { animation-delay: 0.2s; }
+  #mic-wave span:nth-child(4) { animation-delay: 0.1s; }
+  #mic-wave span:nth-child(5) { animation-delay: 0s; }
+
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: 20px; }
+  }
+
+  /* Timer ring */
+  #timer-wrap { position: absolute; bottom: 16px; right: 16px; }
+  #timer-svg { transform: rotate(-90deg); }
+  #timer-ring { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 2; }
+  #timer-progress { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 100.53; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear; }
+  #timer-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-family: var(--mono); color: var(--text-mid); }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* Bottom panel */
+  #panel { background: var(--surface); border-top: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  #bubble-wrap { min-height: 64px; display: flex; align-items: flex-start; gap: 10px; }
+  #bubble-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-top: 2px; }
+  #bubble { font-size: 13px; line-height: 1.65; color: var(--text); flex: 1; }
+  #bubble.empty { color: var(--text-dim); font-style: italic; }
+
+  /* Transcript flash */
+  #transcript-row { font-size: 11px; color: var(--text-dim); font-family: var(--mono); min-height: 16px; display: flex; align-items: center; gap: 6px; }
+  #transcript-icon { color: var(--green); flex-shrink: 0; }
+  #transcript-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Controls */
+  .controls { display: flex; gap: 12px; align-items: center; }
+  #status-text { font-size: 11px; color: var(--text-dim); font-family: var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .icon-btn {
+    width: 88px; height: 88px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-mid);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 34px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Mute: red when active (= muted) */
+  #mute-btn.muted {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  /* AI-silent: accent when active (= AI won't speak proactively) */
+  #ai-btn.silent {
+    background: rgba(245,158,11,0.12);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .btn-label { font-size: 11px; font-weight: 500; position: absolute; bottom: 7px; left: 0; right: 0; text-align: center; letter-spacing: 0.04em; font-family: var(--mono); color: inherit; opacity: 0.7; line-height: 1; }
+
+  /* Slider */
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent); height: 2px; }
+  #interval-label { font-family: var(--mono); min-width: 28px; }
+
+  /* Model selector */
+  .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .model-card { cursor: pointer; display: block; }
+  .model-card input[type=radio] { display: none; }
+  .model-body {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .model-card input:checked + .model-body {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .model-name { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  .model-desc { font-size: 11px; color: var(--text-mid); line-height: 1.5; }
+  .model-cost { color: var(--green); font-family: var(--mono); font-size: 10px; }
+  #model-badge { font-family: var(--mono); font-size: 10px; color: var(--text-dim); padding: 2px 8px; border: 1px solid var(--border); border-radius: 10px; white-space: nowrap; }
+  .toggle-btn {
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--green);
+    background: var(--green-dim);
+    color: var(--green);
+    font-size: 11px;
+    font-weight: 600;
+    font-family: var(--mono);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: all 0.2s;
+    min-width: 38px;
+  }
+  .toggle-btn.off {
+    border-color: var(--text-dim);
+    background: transparent;
+    color: var(--text-dim);
+  }
+  .stop-all-btn {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid var(--red);
+    background: var(--red-dim);
+    color: var(--red);
+    font-size: 14px;
+    font-weight: 600;
+    font-family: var(--font);
+    cursor: pointer;
+    margin-top: 4px;
+    transition: all 0.2s;
+  }
+  .stop-all-btn:active { opacity: 0.7; }
+  #cost-panel {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+  #cost-panel .cost-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2px 0;
+  }
+  #cost-panel .cost-label { color: var(--text-mid); }
+  #cost-panel .cost-val { color: var(--text); font-weight: 500; }
+  #cost-panel .cost-total {
+    border-top: 1px solid var(--border);
+    margin-top: 6px;
+    padding-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  #cost-reset { font-size: 10px; color: var(--text-dim); cursor: pointer; text-decoration: underline; margin-top: 4px; display: inline-block; }
+</style>
+</head>
+<body>
+
+<!-- Setup -->
+<div id="setup">
+  <div class="logo"><div class="logo-dot"></div>DRIVE AI</div>
+  <h1>景色と話す、<br><span>AI助手</span></h1>
+  <p class="desc">常時マイクONで話しかけるだけ。<br>カメラと位置情報から能動的に話しかけてきます。</p>
+
+  <div class="field">
+    <label>OpenAI APIキー</label>
+    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
+  </div>
+  <div class="field">
+    <label>モデル</label>
+    <div class="model-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-5.4-nano" checked>
+        <div class="model-body">
+          <div class="model-name">5.4 nano</div>
+          <div class="model-desc">最安・最速<br><span class="model-cost">~$0.02/時（毎秒）</span></div>
+        </div>
+      </label>
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-4o-mini">
+        <div class="model-body">
+          <div class="model-name">4o mini</div>
+          <div class="model-desc">低コスト<br><span class="model-cost">~$0.05/時（毎秒）</span></div>
+        </div>
+      </label>
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-4o">
+        <div class="model-body">
+          <div class="model-name">4o</div>
+          <div class="model-desc">高精度<br><span class="model-cost">~$0.76/時（毎秒）</span></div>
+        </div>
+      </label>
+    </div>
+  </div>
+    <div class="field-row">
+    <div class="field">
+      <label>AIの性格</label>
+      <input type="text" id="persona" value="気さくなドライブ仲間" placeholder="例：物知りな旅人">
+    </div>
+    <div class="field">
+      <label>あなたの名前</label>
+      <input type="text" id="username" placeholder="例：なと">
+    </div>
+  </div>
+  <div class="field">
+    <label>ウェイクワード（省略可）</label>
+    <input type="text" id="wake-word" placeholder="例：ねえAI、ちょっと、おい">
+    <div style="font-size:11px;color:var(--text-dim);margin-top:4px">設定すると、この言葉から始まる発言のみ認識します。音楽誤検知対策に有効。カンマ区切りで複数設定可。</div>
+  </div>
+  <div class="field">
+    <label>音声エンジン</label>
+    <div class="model-grid" style="grid-template-columns:1fr 1fr">
+      <label class="model-card"><input type="radio" name="tts-engine" value="openai" checked onchange="toggleSakuraField()"><div class="model-body"><div class="model-name">OpenAI TTS</div><div class="model-desc">Nova等・APIキー不要</div></div></label>
+      <label class="model-card"><input type="radio" name="tts-engine" value="sakura" onchange="toggleSakuraField()"><div class="model-body"><div class="model-name">さくら VOICEVOX</div><div class="model-desc">ずんだもん等</div></div></label>
+    </div>
+  </div>
+
+  <div id="openai-voice-section">
+    <div class="field">
+      <label>OpenAI の声</label>
+      <div class="model-grid" style="grid-template-columns:repeat(3,1fr)">
+        <label class="model-card"><input type="radio" name="voice" value="nova" checked><div class="model-body"><div class="model-name">Nova</div><div class="model-desc">明るい女性</div></div></label>
+        <label class="model-card"><input type="radio" name="voice" value="shimmer"><div class="model-body"><div class="model-name">Shimmer</div><div class="model-desc">柔らかい女性</div></div></label>
+        <label class="model-card"><input type="radio" name="voice" value="alloy"><div class="model-body"><div class="model-name">Alloy</div><div class="model-desc">中性</div></div></label>
+        <label class="model-card"><input type="radio" name="voice" value="fable"><div class="model-body"><div class="model-name">Fable</div><div class="model-desc">温かい女性</div></div></label>
+        <label class="model-card"><input type="radio" name="voice" value="echo"><div class="model-body"><div class="model-name">Echo</div><div class="model-desc">低い男性</div></div></label>
+        <label class="model-card"><input type="radio" name="voice" value="onyx"><div class="model-body"><div class="model-name">Onyx</div><div class="model-desc">深い男性</div></div></label>
+      </div>
+    </div>
+  </div>
+
+  <div id="sakura-section" style="display:none">
+    <div class="field">
+      <label>さくら APIトークン</label>
+      <input type="password" id="sakura-api-key" placeholder="さくらコントロールパネルのAPIトークン" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>キャラクター</label>
+      <div class="model-grid" style="grid-template-columns:repeat(3,1fr)">
+        <label class="model-card"><input type="radio" name="sakura-voice" value="zundamon" checked><div class="model-body"><div class="model-name">ずんだもん</div><div class="model-desc">元気な女の子</div></div></label>
+        <label class="model-card"><input type="radio" name="sakura-voice" value="shikokumetan"><div class="model-body"><div class="model-name">四国めたん</div><div class="model-desc">落ち着いた女性</div></div></label>
+        <label class="model-card"><input type="radio" name="sakura-voice" value="kasukabetsumugi"><div class="model-body"><div class="model-name">春日部つむぎ</div><div class="model-desc">明るい女性</div></div></label>
+        <label class="model-card"><input type="radio" name="sakura-voice" value="meimeihimari"><div class="model-body"><div class="model-name">冥鳴ひまり</div><div class="model-desc">ソフトな女性</div></div></label>
+        <label class="model-card"><input type="radio" name="sakura-voice" value="ankomon"><div class="model-body"><div class="model-name">あんこもん</div><div class="model-desc">ほのぼの系</div></div></label>
+        <label class="model-card"><input type="radio" name="sakura-voice" value="tohokukiritan"><div class="model-body"><div class="model-name">東北きりたん</div><div class="model-desc">少女系</div></div></label>
+      </div>
+    </div>
+  </div>
+
+  <button class="btn-start" style="background:var(--surface);border:1px solid var(--border);color:var(--text-mid);margin-bottom:8px" onclick="testVoice()">🔊 声をテスト</button>
+  <div id="test-result" style="font-size:11px;color:var(--text-dim);font-family:var(--mono);min-height:16px;margin-bottom:8px"></div>
+  <button class="btn-start" onclick="startApp()">ドライブを始める →</button>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="cam-wrap">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+
+    <div id="status-bar">
+      <div class="status-pill">
+        <div class="dot active" id="ai-dot"></div>
+        <span id="ai-status">起動中</span>
+      </div>
+      <div id="model-badge">gpt-4o-mini</div>
+      <div class="status-pill" id="session-pill" style="display:none"><span id="session-icon">👀</span><span id="session-label">会話中</span></div>
+      <div class="status-pill" id="location-pill">
+        <span>📍</span>
+        <span id="location-text">取得中…</span>
+      </div>
+    </div>
+
+    <!-- Scene description overlay -->
+    <div id="scene-overlay" style="
+      position:absolute; bottom:0; left:0; right:0;
+      background:linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%);
+      padding:28px 12px 10px;
+      font-size:11px; color:rgba(255,255,255,0.75);
+      font-family:var(--mono); line-height:1.4;
+      min-height:48px;
+    ">
+      <span id="scene-text">カメラ解析待機中…</span>
+    </div>
+
+    <!-- Always-on mic visualizer -->
+    <div id="mic-wave">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <!-- Countdown ring -->
+    <div id="timer-wrap">
+      <svg id="timer-svg" width="36" height="36" viewBox="0 0 36 36">
+        <circle id="timer-ring" cx="18" cy="18" r="16"/>
+        <circle id="timer-progress" cx="18" cy="18" r="16"/>
+      </svg>
+      <div id="timer-label"></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="bubble-wrap">
+      <div id="bubble-icon">🤖</div>
+      <div id="bubble" class="empty">ウェイクワードで話しかけてください</div>
+    </div>
+
+    <!-- Transcript row: shows what you said -->
+    <div id="transcript-row">
+      <span id="transcript-icon">🎙</span>
+      <span id="transcript-text">話しかけると認識されます</span>
+    </div>
+
+    <div class="controls">
+      <span id="status-text">初期化中</span>
+
+      <!-- Mute: タップでマイクをミュート -->
+      <button class="icon-btn" id="mute-btn" onclick="toggleMute()" title="マイクをミュート">
+        🎤
+        <span class="btn-label">MUTE</span>
+      </button>
+
+      <!-- AI silent: タップでAIの能動的発話を止める -->
+      <button class="icon-btn" id="ai-btn" onclick="toggleAiProactive()" title="AIの能動発話をOFF">
+        💬
+        <span class="btn-label">AI ON</span>
+      </button>
+    </div>
+
+    <div class="slider-row">
+      <span style="min-width:28px">📷</span>
+      <button class="toggle-btn" id="cam-toggle-btn" onclick="toggleCamera()">ON</button>
+      <span style="font-size:11px;color:var(--text-dim);flex:1">話しかけ時のみ映像を認識</span>
+    </div>
+    <div class="slider-row">
+      <span style="min-width:28px">⏱</span>
+      <span style="font-size:11px;color:var(--text-mid);flex-shrink:0">セッション</span>
+      <input type="range" id="session-slider" min="60" max="600" value="180" step="30" oninput="updateSessionDuration(this.value)">
+      <span id="session-duration-label" style="min-width:32px">3m</span>
+    </div>
+    <div class="slider-row">
+      <span style="min-width:28px">🔊</span>
+      <input type="range" id="volume-slider" min="0" max="100" value="80" step="5" oninput="updateVolume(this.value)">
+      <span id="volume-label" style="min-width:32px">80%</span>
+    </div>
+    <button class="stop-all-btn" onclick="stopAll()">⏹ 全て停止</button>
+    <div id="cost-panel">
+      <div class="cost-row"><span class="cost-label">入力トークン</span><span class="cost-val" id="c-input">0</span></div>
+      <div class="cost-row"><span class="cost-label">出力トークン</span><span class="cost-val" id="c-output">0</span></div>
+      <div class="cost-row"><span class="cost-label">TTS文字数</span><span class="cost-val" id="c-tts">0</span></div>
+      <div class="cost-row"><span class="cost-label">Web検索回数</span><span class="cost-val" id="c-search">0</span></div>
+      <div class="cost-row"><span class="cost-label">GPT費用</span><span class="cost-val" id="c-gpt-cost">$0.0000</span></div>
+      <div class="cost-row"><span class="cost-label">さくらTTS費用</span><span class="cost-val" id="c-sakura-cost">¥0.00</span></div>
+      <div class="cost-total"><span>合計 (概算)</span><span id="c-total">$0.0000</span></div>
+      <span id="cost-reset" onclick="resetCost()">リセット</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let apiKey = '';
+let selectedModel = 'gpt-5.4-nano';
+let selectedVoice = 'nova';
+let wakeWords = [];
+let sessionActive = false;
+let speakEndTime = 0;  // AI発話終了時刻（エコー抑制用）      // 会話セッション中フラグ
+let sessionTimer = null;        // セッションタイムアウトタイマー
+let sessionDurationSec = 180;   // セッション持続時間（秒）
+let sessionCountdown = 0;       // セッション残り時間表示用
+let ttsEngine = 'openai';
+let sakuraApiKey = '';
+let sakuraVoice = 'zundamon';
+let persona = '';
+let username = '';
+let stream = null;
+let locationData = { lat: null, lon: null, label: '不明' };
+let conversationHistory = [];
+let intervalSec = 180;
+let voiceVolume = 0.8;
+let camIntervalSec = 15;
+let isCameraActive = true;
+let camCountdown = 0;
+let camTimer = null;
+// コスト追跡
+const SAKURA_WAKE_WORDS = {
+  'zundamon':        ['ずんだもん'],
+  'shikokumetan':    ['めたん'],
+  'kasukabetsumugi': ['つむぎ'],
+  'meimeihimari':    ['ひまり'],
+  'ankomon':         ['あんこもん'],
+  'tohokukiritan':   ['きりたん'],
+  'tohokuitako':     ['イタコ', 'いたこ'],
+  'tohokuzunko':     ['ずん子', 'ずんこ'],
+};
+const OPENAI_WAKE_WORDS = ['AI', 'エーアイ'];
+const COSTS = {
+  'gpt-5.4-nano':   { input: 0.20, output: 1.25 },
+  'gpt-4o-mini':    { input: 0.15, output: 0.60 },
+  'gpt-4o':         { input: 2.50, output: 10.00 },
+  'gpt-4o-mini-search-preview': { input: 0.15, output: 0.60 },
+  'gpt-4o-search-preview':      { input: 2.50, output: 10.00 },
+  'tts-1':          { perChar: 0.000015 }, // $15/1M chars
+  'sakura-tts':     { perChar: 0.0000022 } // さくら従量課金 概算
+};
+let usageStats = { inputTokens: 0, outputTokens: 0, ttsChars: 0, sakuraTtsChars: 0, searchCalls: 0 };
+let countdown = 0;
+let countdownTimer = null;
+let isMuted = false;          // マイクをミュート中
+let isAiProactiveSilent = false; // AIの能動発話をOFF
+let isSpeaking = false;
+let isThinking = false;
+let recognition = null;
+let recognitionActive = false;
+
+// ─── Setup ───────────────────────────────────────────────────────────────────
+async function testVoice() {
+  const engine = document.querySelector('input[name="tts-engine"]:checked')?.value || 'openai';
+  const log = document.getElementById('test-result');
+  log.textContent = 'テスト中…';
+
+  try {
+    let arrayBuffer;
+    if (engine === 'sakura') {
+      const key = document.getElementById('sakura-api-key').value.trim();
+      const voice = document.querySelector('input[name="sakura-voice"]:checked')?.value || 'zundamon';
+      if (!key) { log.textContent = '❌ さくらAPIトークンを入力してください'; return; }
+      log.textContent = `さくら(${voice})にリクエスト中…`;
+      const res = await fetch('https://api.ai.sakura.ad.jp/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ model: voice, input: 'こんにちは、ずんだもんなのだ！テスト成功なのだ！', voice: 'normal', response_format: 'wav' })
+      });
+      log.textContent = `レスポンス: ${res.status} ${res.statusText}`;
+      if (!res.ok) {
+        const err = await res.text();
+        log.textContent = `❌ エラー ${res.status}: ${err.slice(0,100)}`;
+        return;
+      }
+      arrayBuffer = await res.arrayBuffer();
+      log.textContent = `✅ WAV受信 ${arrayBuffer.byteLength} bytes、再生中…`;
+    } else {
+      const key = document.getElementById('api-key').value.trim();
+      const voice = document.querySelector('input[name="voice"]:checked')?.value || 'nova';
+      if (!key) { log.textContent = '❌ OpenAI APIキーを入力してください'; return; }
+      const res = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${key}` },
+        body: JSON.stringify({ model: 'tts-1', input: 'こんにちは、テスト成功です！', voice, speed: 1.1 })
+      });
+      log.textContent = `レスポンス: ${res.status} ${res.statusText}`;
+      if (!res.ok) { log.textContent = `❌ エラー ${res.status}`; return; }
+      arrayBuffer = await res.arrayBuffer();
+      log.textContent = `✅ MP3受信 ${arrayBuffer.byteLength} bytes、再生中…`;
+    }
+
+    const mimeType = engine === 'sakura' ? 'audio/wav' : 'audio/mpeg';
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.onended = () => { log.textContent = '✅ 再生完了！'; URL.revokeObjectURL(url); };
+    audio.onerror = (e) => { log.textContent = `❌ 再生エラー: ${JSON.stringify(e)}`; URL.revokeObjectURL(url); };
+    const playResult = await audio.play().catch(e => e);
+    if (playResult instanceof Error) {
+      log.textContent = `❌ play()エラー: ${playResult.message}`;
+    }
+  } catch(e) {
+    log.textContent = `❌ 例外: ${e.message}`;
+  }
+}
+
+function toggleSakuraField() {
+  const engine = document.querySelector('input[name="tts-engine"]:checked')?.value;
+  document.getElementById('sakura-section').style.display = engine === 'sakura' ? 'block' : 'none';
+  document.getElementById('openai-voice-section').style.display = engine === 'sakura' ? 'none' : 'block';
+}
+
+function loadSavedSettings() {
+  try {
+    const openaiKey = localStorage.getItem('driveai_openai_key');
+    const sakuraKey = localStorage.getItem('driveai_sakura_key');
+    const engine = localStorage.getItem('driveai_tts_engine');
+    const sVoice = localStorage.getItem('driveai_sakura_voice');
+    const oVoice = localStorage.getItem('driveai_openai_voice');
+    const savedPersona = localStorage.getItem('driveai_persona');
+    const savedUsername = localStorage.getItem('driveai_username');
+    const savedModel = localStorage.getItem('driveai_model');
+
+    if (openaiKey) document.getElementById('api-key').value = openaiKey;
+    if (sakuraKey) document.getElementById('sakura-api-key').value = sakuraKey;
+    if (savedPersona) document.getElementById('persona').value = savedPersona;
+    if (savedUsername) document.getElementById('username').value = savedUsername;
+
+    if (engine) {
+      const radio = document.querySelector(`input[name="tts-engine"][value="${engine}"]`);
+      if (radio) { radio.checked = true; toggleSakuraField(); }
+    }
+    if (sVoice) {
+      const radio = document.querySelector(`input[name="sakura-voice"][value="${sVoice}"]`);
+      if (radio) radio.checked = true;
+    }
+    if (oVoice) {
+      const radio = document.querySelector(`input[name="voice"][value="${oVoice}"]`);
+      if (radio) radio.checked = true;
+    }
+    if (savedModel) {
+      const radio = document.querySelector(`input[name="model"][value="${savedModel}"]`);
+      if (radio) radio.checked = true;
+    }
+    const savedVolume = localStorage.getItem('driveai_volume');
+    if (savedVolume) {
+      document.getElementById('volume-slider').value = savedVolume;
+      voiceVolume = parseInt(savedVolume) / 100;
+      document.getElementById('volume-label').textContent = savedVolume + '%';
+    }
+    const savedWakeWords = localStorage.getItem('driveai_wakewords');
+    if (savedWakeWords) document.getElementById('wake-word').value = savedWakeWords;
+    const savedUsage = localStorage.getItem('driveai_usage');
+    if (savedUsage) {
+      try { usageStats = JSON.parse(savedUsage); renderCost(); } catch(e) {}
+    }
+  } catch(e) {}
+}
+
+// ページ読み込み時に設定を復元
+window.addEventListener('DOMContentLoaded', loadSavedSettings);
+
+async function startApp() {
+  apiKey = document.getElementById('api-key').value.trim();
+  if (!apiKey.startsWith('sk-')) { alert('OpenAI APIキーを入力してください（sk-... から始まるもの）'); return; }
+  persona = document.getElementById('persona').value.trim() || '気さくなドライブ仲間';
+  selectedModel = document.querySelector('input[name="model"]:checked').value;
+  document.getElementById('model-badge').textContent = selectedModel;
+  const wakeWordInput = document.getElementById('wake-word').value.trim();
+  if (wakeWordInput) {
+    wakeWords = wakeWordInput.split(',').map(w => w.trim()).filter(Boolean);
+  } else {
+    // キャラクターに応じてウェイクワードを自動設定
+    if (ttsEngine === 'sakura' && SAKURA_WAKE_WORDS[sakuraVoice]) {
+      wakeWords = SAKURA_WAKE_WORDS[sakuraVoice];
+    } else {
+      wakeWords = OPENAI_WAKE_WORDS;
+    }
+  }
+  try { localStorage.setItem('driveai_wakewords', wakeWordInput); localStorage.setItem('driveai_username', username); } catch(e) {}
+  // ウェイクワードをUIに反映
+  setTranscript('ウェイクワード: ' + wakeWords.slice(0,2).join(' / ') + ' など');
+  ttsEngine = document.querySelector('input[name="tts-engine"]:checked').value;
+  selectedVoice = document.querySelector('input[name="voice"]:checked')?.value || 'nova';
+  sakuraApiKey = document.getElementById('sakura-api-key').value.trim();
+  sakuraVoice = document.querySelector('input[name="sakura-voice"]:checked')?.value || 'zundamon';
+  // APIキーを保存
+  try {
+    localStorage.setItem('driveai_openai_key', apiKey);
+    localStorage.setItem('driveai_sakura_key', sakuraApiKey);
+    localStorage.setItem('driveai_tts_engine', ttsEngine);
+    localStorage.setItem('driveai_sakura_voice', sakuraVoice);
+    localStorage.setItem('driveai_openai_voice', selectedVoice);
+    localStorage.setItem('driveai_persona', persona);
+    localStorage.setItem('driveai_username', username);
+    localStorage.setItem('driveai_model', selectedModel);
+  } catch(e) {}
+  username = document.getElementById('username').value.trim() || 'あなた';
+
+  document.getElementById('setup').style.display = 'none';
+  const mainEl = document.getElementById('main');
+  mainEl.style.display = 'flex';
+  mainEl.style.flexDirection = 'column';
+
+  conversationHistory = [{ role: 'system', content: buildSystemPrompt() }];
+
+  await initCamera();
+  initLocation();
+  initContinuousRecognition();
+
+  // カメラ自動解析は無効（話しかけたときのみ映像を送る）
+  setStatus('ウェイクワードで話しかけてください');
+  setBubble('「' + wakeWords[0] + '」と話しかけてください 🎤');
+}
+
+function buildSystemPrompt() {
+  return `あなたは${persona}として、ドライブ中の${username}さんの車内にいるAIアシスタントです。
+
+【絶対に守るルール】
+- 友人同士のようなタメ口。敬語なし
+- 返答は1〜2文の短さ（運転中のため）
+- 質問で返さない。感想・気づき・コメントで返す
+- 「〜ある？」「〜どう思う？」のような質問は禁止
+- ${username}さんが話しかけてきたら必ず返答する。SKIPは絶対禁止
+
+【能動的発話（[AIが能動的に話しかけるターン]の場合のみ）】
+- 本当に珍しいものが見えたときだけ、一言感想を言う
+- 普通の景色なら「SKIP」とだけ返す
+- 質問しない。「〜だね」「〜すごいな」のような独り言風に
+
+日本語で話すこと。`;
+}
+
+// ─── Camera ──────────────────────────────────────────────────────────────────
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false
+    });
+    document.getElementById('cam').srcObject = stream;
+  } catch {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      document.getElementById('cam').srcObject = stream;
+    } catch { setBubble('カメラにアクセスできません。ブラウザ設定を確認してください。'); }
+  }
+}
+
+function captureFrame() {
+  const video = document.getElementById('cam');
+  const canvas = document.getElementById('cam-canvas');
+  if (!video.videoWidth) return null;
+  canvas.width = 640;
+  canvas.height = Math.round(640 * video.videoHeight / video.videoWidth);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+// ─── Location ────────────────────────────────────────────────────────────────
+function initLocation() {
+  if (!navigator.geolocation) { document.getElementById('location-text').textContent = '非対応'; return; }
+  navigator.geolocation.watchPosition(async pos => {
+    locationData.lat = pos.coords.latitude;
+    locationData.lon = pos.coords.longitude;
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${locationData.lat}&lon=${locationData.lon}&format=json`,
+        { headers: { 'Accept-Language': 'ja' } }
+      );
+      const data = await res.json();
+      const addr = data.address || {};
+      const parts = [addr.city || addr.town || addr.village || addr.county || '', addr.road || addr.suburb || ''].filter(Boolean);
+      locationData.label = parts.join(' ') || data.display_name?.split(',')[0] || '現在地';
+      document.getElementById('location-text').textContent = locationData.label;
+    } catch {
+      locationData.label = `${locationData.lat?.toFixed(3)}, ${locationData.lon?.toFixed(3)}`;
+      document.getElementById('location-text').textContent = locationData.label;
+    }
+  }, () => { document.getElementById('location-text').textContent = '位置情報OFF'; },
+  { enableHighAccuracy: true, maximumAge: 15000 });
+}
+
+// ─── Continuous Speech Recognition ───────────────────────────────────────────
+function initContinuousRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    setTranscript('⚠ このブラウザは音声認識非対応');
+    return;
+  }
+
+  recognition = new SR();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    recognitionActive = true;
+    if (!isMuted) showMicWave(true);
+  };
+
+  recognition.onresult = (e) => {
+    if (isMuted || isSpeaking || isThinking) return; // ミュート中・AI発話中・思考中は無視
+    // エコー抑制：AI発話終了後2秒以内は無視
+    if (Date.now() - speakEndTime < 2000) return;
+
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+
+    if (interim) setTranscript(interim + '…');
+    if (final.trim()) {
+      const transcript = final.trim();
+      setTranscript(transcript);
+      // AI発話中・思考中は無視
+      if (isSpeaking || isThinking) return;
+      // 短すぎる認識は無視（音楽・ラジオの誤検知対策）
+      if (transcript.length < 3) return;
+      // 信頼度チェック（利用可能な場合）
+      const confidence = e.results[e.results.length - 1][0].confidence;
+      if (confidence < 0.6) {
+        setTranscript(`(低信頼度 ${Math.round(confidence*100)}%: ${transcript})`);
+        return;
+      }
+      // ウェイクワードフィルター（セッション中は不要）
+      if (wakeWords.length > 0 && !sessionActive) {
+        // 句読点・スペースを除去して比較
+        const normalize = s => s.replace(/[、。，．・\s]/g, '').toLowerCase();
+        const normTranscript = normalize(transcript);
+        const matched = wakeWords.some(w => normTranscript.includes(normalize(w)));
+        if (!matched) {
+          setTranscript(`(ウェイクワードなし: ${transcript})`);
+          return;
+        }
+      }
+      handleUserInput(transcript);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    console.warn('SR error:', e.error);
+  };
+
+  recognition.onend = () => {
+    recognitionActive = false;
+    // 自動再起動（ブラウザが止めてしまうため）
+    if (!isMuted) {
+      setTimeout(() => startRecognition(), 300);
+    }
+  };
+
+  startRecognition();
+}
+
+function startRecognition() {
+  if (recognitionActive || isMuted || !recognition) return;
+  try { recognition.start(); } catch {}
+}
+
+function stopRecognitionTemporarily() {
+  if (!recognition) return;
+  try { recognition.abort(); } catch {}
+  recognitionActive = false;
+  showMicWave(false);
+}
+
+function resumeRecognition() {
+  if (!isMuted) {
+    // 発話終了後2秒待ってから再開
+    setTimeout(() => {
+      if (!isMuted && !isSpeaking) {
+        startRecognition();
+        showMicWave(true);
+      }
+    }, 2000);
+  }
+}
+
+// ─── Mute toggle ─────────────────────────────────────────────────────────────
+function toggleMute() {
+  isMuted = !isMuted;
+  const btn = document.getElementById('mute-btn');
+  btn.textContent = isMuted ? '🔇' : '🎤';
+  btn.innerHTML = (isMuted ? '🔇' : '🎤') + '<span class="btn-label">MUTE</span>';
+  btn.classList.toggle('muted', isMuted);
+
+  if (isMuted) {
+    stopRecognitionTemporarily();
+    showMicWave(false);
+    setTranscript('マイクをミュートしています');
+    setStatus('マイクOFF');
+  } else {
+    startRecognition();
+    showMicWave(true);
+    setTranscript('話しかけると認識されます');
+    setStatus('待機中');
+  }
+}
+
+// ─── AI proactive toggle ─────────────────────────────────────────────────────
+function toggleAiProactive() {
+  isAiProactiveSilent = !isAiProactiveSilent;
+  const iconBtn = document.getElementById('ai-btn');
+  if (iconBtn) {
+    iconBtn.innerHTML = (isAiProactiveSilent ? '🔕' : '💬') + '<span class="btn-label">' + (isAiProactiveSilent ? 'AI OFF' : 'AI ON') + '</span>';
+    iconBtn.classList.toggle('silent', isAiProactiveSilent);
+  }
+  const talkBtn = document.getElementById('ai-talk-btn');
+  if (talkBtn) {
+    talkBtn.textContent = isAiProactiveSilent ? 'OFF' : 'ON';
+    talkBtn.classList.toggle('off', isAiProactiveSilent);
+  }
+  setStatus(isAiProactiveSilent ? 'AI能動発話OFF' : '待機中');
+}
+
+// ─── Schedule / Timer ────────────────────────────────────────────────────────
+function scheduleNext(sec) {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdown = sec;
+  updateTimer();
+  countdownTimer = setInterval(() => {
+    if (isSpeaking || isThinking) return; // カウント停止
+    countdown--;
+    updateTimer();
+    if (countdown <= 0) {
+      clearInterval(countdownTimer);
+      if (!isAiProactiveSilent) {
+        analyzeAndSpeak();
+      } else {
+        countdown = intervalSec;
+        scheduleNext(intervalSec);
+      }
+    }
+  }, 1000);
+}
+
+function toggleCamera() {
+  isCameraActive = !isCameraActive;
+  const btn = document.getElementById('cam-toggle-btn');
+  btn.textContent = isCameraActive ? 'ON' : 'OFF';
+  btn.classList.toggle('off', !isCameraActive);
+  if (!isCameraActive) {
+    // カメラストリーム停止
+    if (camTimer) { clearInterval(camTimer); camTimer = null; }
+    if (stream) {
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+      document.getElementById('cam').srcObject = null;
+    }
+    setStatus('カメラOFF');
+  } else {
+    // カメラ再開
+    initCamera().then(() => scheduleCamNext(camIntervalSec));
+    setStatus('カメラ再開');
+  }
+}
+
+function updateSessionDuration(val) {
+  sessionDurationSec = parseInt(val);
+  const m = Math.floor(sessionDurationSec / 60);
+  const s = sessionDurationSec % 60;
+  document.getElementById('session-duration-label').textContent =
+    s === 0 ? m + 'm' : m + 'm' + s + 's';
+}
+
+function updateCamInterval(val) {
+  camIntervalSec = parseInt(val);
+  const label = camIntervalSec >= 60
+    ? (camIntervalSec % 60 === 0 ? (camIntervalSec/60)+'m' : (camIntervalSec/60).toFixed(1)+'m')
+    : val + 's';
+  document.getElementById('cam-interval-label').textContent = label;
+}
+
+function scheduleCamNext(sec) {
+  // カメラ自動解析は無効化（セッション中はhandleUserInputが映像を使う）
+}
+
+function startSession() {
+  sessionActive = true;
+  if (sessionTimer) clearTimeout(sessionTimer);
+  sessionCountdown = sessionDurationSec;
+  updateSessionUI();
+  // カウントダウン表示
+  if (window._sessionCountdownTimer) clearInterval(window._sessionCountdownTimer);
+  window._sessionCountdownTimer = setInterval(() => {
+    sessionCountdown--;
+    updateSessionUI();
+    if (sessionCountdown <= 0) endSession();
+  }, 1000);
+  // タイムアウト
+  sessionTimer = setTimeout(endSession, sessionDurationSec * 1000);
+}
+
+function extendSession() {
+  // 発話があるたびにセッションを延長
+  if (!sessionActive) return;
+  if (sessionTimer) clearTimeout(sessionTimer);
+  sessionCountdown = sessionDurationSec;
+  sessionTimer = setTimeout(endSession, sessionDurationSec * 1000);
+}
+
+function endSession() {
+  sessionActive = false;
+  if (sessionTimer) { clearTimeout(sessionTimer); sessionTimer = null; }
+  if (window._sessionCountdownTimer) { clearInterval(window._sessionCountdownTimer); window._sessionCountdownTimer = null; }
+  sessionCountdown = 0;
+  updateSessionUI();
+  setStatus('セッション終了 — ウェイクワードで再開');
+}
+
+function updateSessionUI() {
+  const dot = document.getElementById('ai-dot');
+  const label = document.getElementById('ai-status');
+  const pill = document.getElementById('session-pill');
+  const slabel = document.getElementById('session-label');
+  const m = Math.floor(sessionCountdown / 60);
+  const s = sessionCountdown % 60;
+  if (sessionActive) {
+    pill.style.display = 'flex';
+    slabel.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    if (!isSpeaking && !isThinking) {
+      dot.className = 'dot listening';
+      label.textContent = '会話中';
+    }
+  } else {
+    pill.style.display = 'none';
+    if (!isSpeaking && !isThinking) {
+      dot.className = 'dot active';
+      label.textContent = '待機中';
+    }
+  }
+}
+
+function stopAll() {
+  // 音声停止
+  stopCurrentSpeech();
+  // 認識停止
+  isMuted = true;
+  if (recognition) try { recognition.abort(); } catch {}
+  showMicWave(false);
+  // カメラ停止
+  isCameraActive = false;
+  if (camTimer) { clearInterval(camTimer); camTimer = null; }
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; document.getElementById('cam').srcObject = null; }
+  // タイマー停止
+  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null; }
+  isAiProactiveSilent = true;
+  // UIリセット
+  document.getElementById('cam-toggle-btn').textContent = 'OFF';
+  document.getElementById('cam-toggle-btn').classList.add('off');
+  document.getElementById('ai-btn').innerHTML = '🔕<span class="btn-label">AI OFF</span>';
+  document.getElementById('ai-btn').classList.add('silent');
+  document.getElementById('mute-btn').innerHTML = '🔇<span class="btn-label">MUTE</span>';
+  document.getElementById('mute-btn').classList.add('muted');
+  setStatus('全て停止しました');
+  setBubble('停止中です。ページをリロードすると再開します。');
+}
+
+function updateCost(inputTok, outputTok, ttsChars, isSakuraTts, isSearch) {
+  usageStats.inputTokens += inputTok || 0;
+  usageStats.outputTokens += outputTok || 0;
+  if (isSakuraTts) usageStats.sakuraTtsChars += ttsChars || 0;
+  else usageStats.ttsChars += ttsChars || 0;
+  if (isSearch) usageStats.searchCalls++;
+  renderCost();
+  try { localStorage.setItem('driveai_usage', JSON.stringify(usageStats)); } catch(e) {}
+}
+
+function renderCost() {
+  const r = usageStats;
+  document.getElementById('c-input').textContent = r.inputTokens.toLocaleString();
+  document.getElementById('c-output').textContent = r.outputTokens.toLocaleString();
+  document.getElementById('c-tts').textContent = (r.ttsChars + r.sakuraTtsChars).toLocaleString();
+  document.getElementById('c-search').textContent = r.searchCalls;
+
+  const modelCost = COSTS[selectedModel] || COSTS['gpt-4o-mini'];
+  const gptCost = (r.inputTokens / 1e6 * modelCost.input) + (r.outputTokens / 1e6 * modelCost.output);
+  const ttsCost = r.ttsChars * COSTS['tts-1'].perChar;
+  const searchCost = r.searchCalls * 0.025; // $0.025/call for mini-search
+  const sakuraCost = r.sakuraTtsChars * COSTS['sakura-tts'].perChar * 150; // 円換算 ¥150/$
+  const totalUsd = gptCost + ttsCost + searchCost;
+
+  document.getElementById('c-gpt-cost').textContent = '$' + (gptCost + ttsCost + searchCost).toFixed(4);
+  document.getElementById('c-sakura-cost').textContent = '¥' + sakuraCost.toFixed(2);
+  document.getElementById('c-total').textContent = '$' + totalUsd.toFixed(4) + ' + ¥' + sakuraCost.toFixed(2);
+}
+
+function resetCost() {
+  usageStats = { inputTokens: 0, outputTokens: 0, ttsChars: 0, sakuraTtsChars: 0, searchCalls: 0 };
+  renderCost();
+  try { localStorage.removeItem('driveai_usage'); } catch(e) {}
+}
+
+function updateVolume(val) {
+  voiceVolume = parseInt(val) / 100;
+  document.getElementById('volume-label').textContent = val + '%';
+  try { localStorage.setItem('driveai_volume', val); } catch(e) {}
+}
+
+function updateInterval(val) {
+  intervalSec = parseInt(val);
+  const label = intervalSec >= 60
+    ? (intervalSec % 60 === 0 ? (intervalSec / 60) + 'm' : (intervalSec / 60).toFixed(1) + 'm')
+    : val + 's';
+  document.getElementById('interval-label').textContent = label;
+}
+
+function updateTimer() {
+  const c = 100.53;
+  document.getElementById('timer-progress').style.strokeDashoffset = c * (1 - Math.max(0, countdown / intervalSec));
+  document.getElementById('timer-label').textContent = isAiProactiveSilent ? '–' : (countdown > 0 ? countdown : '');
+  document.getElementById('timer-progress').style.stroke = isAiProactiveSilent ? 'var(--amber)' : 'var(--accent)';
+}
+
+// ─── AI Analysis (proactive) ─────────────────────────────────────────────────
+async function analyzeAndSpeak() {
+  if (isThinking || isSpeaking || isAiProactiveSilent) return;
+  const imageB64 = captureFrame();
+  if (!imageB64) { scheduleNext(intervalSec); return; }
+
+  setAiState('thinking');
+  const locationCtx = locationData.lat
+    ? `現在地: ${locationData.label}（緯度${locationData.lat?.toFixed(4)}, 経度${locationData.lon?.toFixed(4)}）`
+    : '位置情報: 不明';
+
+  const userMsg = {
+    role: 'user',
+    content: [
+      { type: 'text', text: `[AIが能動的に話しかけるターン]\n${locationCtx}\n\nカメラに映っている景色・状況を見て、自然に話しかけてください。特に面白いものがなければ「SKIP」とだけ返してください。` },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}`, detail: 'low' } }
+    ]
+  };
+
+  try {
+    // 能動発話は履歴なし（コスト削減）
+    const proactiveMessages = [conversationHistory[0], userMsg];
+    const response = await callGPT(proactiveMessages);
+    const raw = response.trim();
+
+    // JSON解析
+    let scene = '', urgent = false, message = '';
+    try {
+      const clean = raw.replace(/^```json|```$/g, '').trim();
+      const parsed = JSON.parse(clean);
+      scene = parsed.scene || '';
+      urgent = parsed.urgent || false;
+      message = parsed.message || '';
+    } catch {
+      // JSON失敗時はSKIPとして扱う
+      scene = '';
+      message = '';
+    }
+
+    // シーン説明を常に表示
+    if (scene) {
+      document.getElementById('scene-text').textContent = scene;
+    }
+
+    if (!message) {
+      setAiState('active');
+      setStatus(scene ? `認識: ${scene}` : '変化なし');
+      if (isCameraActive) scheduleCamNext(camIntervalSec);
+      return;
+    }
+
+    conversationHistory.push({ role: 'user', content: `[${locationCtx}] カメラ: ${scene}` });
+    conversationHistory.push({ role: 'assistant', content: message });
+    trimHistory();
+    setBubble(message);
+
+    if (urgent) {
+      setStatus('⚡ ' + scene);
+      // urgentはTTSフェッチを即開始して並列処理
+      await speakUrgent(message);
+    } else {
+      await speak(message);
+    }
+    if (isCameraActive) scheduleCamNext(camIntervalSec);
+  } catch (e) {
+    console.error(e);
+    setStatus('エラー: ' + e.message);
+    setAiState('active');
+    if (isCameraActive) scheduleCamNext(camIntervalSec);
+  }
+}
+
+// ─── User input handler ───────────────────────────────────────────────────────
+async function handleUserInput(text) {
+  if (!text.trim() || isThinking) return;
+  // AI発話中・発話直後2秒は完全無視（エコー対策）
+  if (isSpeaking) return;
+  if (Date.now() - speakEndTime < 2000) return;
+
+  // セッション開始または延長
+  if (!sessionActive) {
+    startSession();
+    setBubble('会話セッション開始！3分間カメラを見ながら話せます 👀');
+  } else {
+    extendSession();
+  }
+
+  setAiState('thinking');
+  // セッション中は常にカメラ映像を添付
+  const imageB64 = isCameraActive ? captureFrame() : null;
+  const locationCtx = locationData.lat ? `現在地: ${locationData.label}` : '';
+
+  // ユーザー発言専用メッセージ：SKIPを返さないよう明示＋カメラ映像も含める
+  const locationStr = locationCtx ? `現在地: ${locationCtx}` : '';
+  const userContent = imageB64 ? [
+    { type: 'text', text: `[ユーザーからの発言。必ず返答すること。SKIPは禁止。カメラに映っている景色・状況も踏まえて返答してよい]${locationStr ? ' ' + locationStr : ''}
+ユーザー: ${text}` },
+    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}`, detail: 'low' } }
+  ] : `[ユーザーからの発言。必ず返答すること。SKIPは禁止]
+ユーザー: ${text}`;
+
+  // 履歴にはテキストのみ保存（画像は毎回新規取得するため不要）
+  const textOnly = locationCtx ? `[${locationCtx}] ${text}` : text;
+  conversationHistory.push({ role: 'user', content: userContent }); // API送信用
+
+  try {
+    const response = await callGPTWithSearch(conversationHistory);
+    // SKIPが返ってきても強制的に返答させる
+    const finalResponse = (response.trim() === 'SKIP' || response.trim() === '')
+      ? 'うん、聞こえてるよ！'
+      : response;
+    conversationHistory.push({ role: 'assistant', content: finalResponse });
+    trimHistory();
+    setBubble(finalResponse);
+    await speak(finalResponse);
+  } catch (e) {
+    setStatus('エラー: ' + e.message);
+    setAiState('active');
+    scheduleNext(intervalSec);
+  }
+}
+
+// ─── GPT ─────────────────────────────────────────────────────────────────────
+// 能動発話用：Web検索なし
+async function callGPT(messages) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: selectedModel, messages, max_tokens: 200, temperature: 0.85 })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'API error'); }
+  const data = await res.json();
+  const usage = data.usage;
+  if (usage) updateCost(usage.prompt_tokens, usage.completion_tokens, 0, false, false);
+  return data.choices[0].message.content || '';
+}
+
+// ユーザー発言用：必要なら検索モデルに切り替え
+async function callGPTWithSearch(messages) {
+  // まず通常モデルで試す。検索が必要そうか判定
+  const lastUserText = messages.filter(m => m.role === 'user').slice(-1)[0];
+  const textContent = Array.isArray(lastUserText?.content)
+    ? lastUserText.content.find(c => c.type === 'text')?.text || ''
+    : lastUserText?.content || '';
+  const needsSearch = /天気|ニュース|今日|今|最新|いつ|どこ|何時|渋滞|営業|開いて|調べ|教えて|知ってる/.test(textContent);
+  const needsVisualSearch = /これ何|何これ|あれ何|何あれ|ここどこ|あそこ|あの建物|あの店|あの看板|なんて書|読んで|教えて|調べて/.test(textContent);
+
+  // ビジュアル検索：画像→キーワード抽出→Web検索の2段階
+  if (needsVisualSearch) {
+    try {
+      setStatus('画像を解析中…');
+      const imageB64 = captureFrame();
+      const visionMessages = [
+        { role: 'system', content: '画像に映っているものを特定し、Web検索に使える日本語キーワードを1〜3個だけ返してください。例：「東京スカイツリー 観光」「セブンイレブン 営業時間」。余計な説明は不要。' },
+        { role: 'user', content: imageB64 ? [
+          { type: 'text', text: 'この画像に映っているものを検索キーワードにしてください。' },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}`, detail: 'low' } }
+        ] : '画像なし' }
+      ];
+      const vRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: 'gpt-4o-mini', messages: visionMessages, max_tokens: 50 })
+      });
+      const vData = await vRes.json();
+      const keyword = vData.choices[0]?.message?.content?.trim();
+      if (keyword && keyword !== '画像なし') {
+        setStatus(`「${keyword}」を検索中…`);
+        const searchModel = 'gpt-4o-mini-search-preview';
+        const searchMessages = [
+          { role: 'system', content: `あなたは${persona}。友人口調・タメ口・2〜3文で答える。Web検索で調べた場合は必ず「〇〇のサイトによると」や「〇〇（URL）によると」のように情報源を1つ明示すること。` },
+          { role: 'user', content: `${textContent}（カメラに映っているもの：${keyword}）${locationData.label ? '現在地：' + locationData.label : ''}` }
+        ];
+        const sRes = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: searchModel, messages: searchMessages, max_tokens: 300, web_search_options: { search_context_size: 'low' } })
+        });
+        if (sRes.ok) {
+          const sData = await sRes.json();
+          const answer = sData.choices[0]?.message?.content;
+          if (answer) {
+            if (sData.usage) updateCost(sData.usage.prompt_tokens, sData.usage.completion_tokens, 0, false, true);
+            return answer;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('visual search failed:', e);
+    }
+  }
+
+  if (needsSearch) {
+    try {
+      const textOnlyMessages = messages.map(m => {
+        if (Array.isArray(m.content)) {
+          const text = m.content.find(c => c.type === 'text')?.text || '';
+          return { ...m, content: text };
+        }
+        return m;
+      });
+      const searchModel = selectedModel.includes('4o-mini') ? 'gpt-4o-mini-search-preview'
+                        : selectedModel.includes('4o') ? 'gpt-4o-search-preview'
+                        : 'gpt-4o-mini-search-preview';
+      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model: searchModel,
+          messages: textOnlyMessages,
+          max_tokens: 300,
+          web_search_options: { search_context_size: 'low' }
+        })
+      });
+      if (!res.ok) throw new Error('search_failed');
+      const data = await res.json();
+      const content = data.choices[0]?.message?.content;
+      if (content) return content;
+      throw new Error('empty');
+    } catch {
+      // 失敗したら通常モデルにフォールバック
+    }
+  }
+  return await callGPT(messages);
+}
+
+// ─── TTS ─────────────────────────────────────────────────────────────────────
+let currentAudio = null;
+let speakAborted = false;
+
+// 緊急発話：TTS生成を即開始して最速で再生
+async function speakUrgent(text) {
+  setAiState('speaking');
+  stopRecognitionTemporarily();
+  speakAborted = false;
+  if (ttsEngine === 'sakura') updateCost(0, 0, text.length, true, false);
+  else updateCost(0, 0, text.length, false, false);
+
+  try {
+    // TTS APIリクエストを即座に開始
+    const fetchPromise = ttsEngine === 'sakura' && sakuraApiKey
+      ? fetch('https://api.ai.sakura.ad.jp/v1/audio/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sakuraApiKey}` },
+          body: JSON.stringify({ model: sakuraVoice, input: text, voice: 'normal', response_format: 'wav' })
+        })
+      : fetch('https://api.openai.com/v1/audio/speech', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+          body: JSON.stringify({ model: 'tts-1', input: text, voice: selectedVoice, speed: 1.1 })
+        });
+
+    const res = await fetchPromise;
+    if (!res.ok) throw new Error('TTS failed');
+    const arrayBuffer = await res.arrayBuffer();
+    const mimeType = (ttsEngine === 'sakura') ? 'audio/wav' : 'audio/mpeg';
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.volume = voiceVolume;
+    currentAudio = audio;
+    await new Promise(resolve => {
+      audio.onended = resolve;
+      audio.onerror = resolve;
+      audio.play().catch(resolve);
+    });
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+  } catch {
+    await speakWebSpeech(text);
+  }
+
+  if (!speakAborted) {
+    setAiState('active');
+    resumeRecognition();
+  }
+}
+
+async function speak(text) {
+  setAiState('speaking');
+  stopRecognitionTemporarily();
+  speakAborted = false;
+  // TTS文字数計上
+  if (ttsEngine === 'sakura') updateCost(0, 0, text.length, true, false);
+  else updateCost(0, 0, text.length, false, false);
+
+  try {
+    let arrayBuffer;
+    if (ttsEngine === 'sakura' && sakuraApiKey) {
+      // さくらVOICEVOX TTS
+      const res = await fetch('https://api.ai.sakura.ad.jp/v1/audio/speech', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${sakuraApiKey}`
+        },
+        body: JSON.stringify({
+          model: sakuraVoice,
+          input: text,
+          voice: 'normal',
+          response_format: 'wav'
+        })
+      });
+      if (!res.ok) throw new Error('Sakura TTS failed');
+      arrayBuffer = await res.arrayBuffer();
+    } else {
+      // OpenAI TTS
+      const res = await fetch('https://api.openai.com/v1/audio/speech', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: 'tts-1', input: text, voice: selectedVoice, speed: 1.1 })
+      });
+      if (!res.ok) throw new Error('OpenAI TTS failed');
+      arrayBuffer = await res.arrayBuffer();
+    }
+
+    // Blob URLで再生（WAV/MP3両対応）
+    const mimeType = (ttsEngine === 'sakura') ? 'audio/wav' : 'audio/mpeg';
+    const blob = new Blob([arrayBuffer], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.volume = voiceVolume;
+    currentAudio = audio;
+    await new Promise((resolve) => {
+      audio.onended = resolve;
+      audio.onerror = resolve;
+      audio.play().catch(resolve);
+    });
+    URL.revokeObjectURL(url);
+    currentAudio = null;
+  } catch (e) {
+    console.error('TTS error:', e);
+    await speakWebSpeech(text);
+  }
+
+  if (!speakAborted) {
+    setAiState('active');
+    resumeRecognition();
+  }
+}
+
+function stopCurrentSpeech() {
+  speakAborted = true;
+  if (currentAudio) {
+    try { currentAudio.stop(); } catch {}
+    try { currentAudio.pause(); } catch {}
+    currentAudio = null;
+  }
+  window.speechSynthesis?.cancel();
+  isSpeaking = false;
+}
+
+function speakWebSpeech(text) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) { resolve(); return; }
+    speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'ja-JP';
+    utt.rate = 1.1;
+    const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ja'));
+    if (voices.length) utt.voice = voices[0];
+    utt.onend = resolve;
+    utt.onerror = resolve;
+    speechSynthesis.speak(utt);
+  });
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function trimHistory() {
+  if (conversationHistory.length > 10) {
+    conversationHistory = [conversationHistory[0], ...conversationHistory.slice(-8)];
+  }
+}
+
+function showMicWave(on) {
+  document.getElementById('mic-wave').classList.toggle('visible', on);
+}
+
+function setBubble(text) {
+  const el = document.getElementById('bubble');
+  el.textContent = text;
+  el.classList.remove('empty');
+}
+
+function setTranscript(text) {
+  document.getElementById('transcript-text').textContent = text;
+}
+
+function setStatus(text) {
+  document.getElementById('status-text').textContent = text;
+}
+
+function setAiState(state) {
+  const dot = document.getElementById('ai-dot');
+  const label = document.getElementById('ai-status');
+  dot.className = 'dot';
+  isThinking = false;
+  isSpeaking = false;
+
+  if (state === 'thinking') {
+    dot.classList.add('thinking');
+    label.textContent = '考え中';
+    isThinking = true;
+    setStatus('応答生成中…');
+    showMicWave(false);
+  } else if (state === 'speaking') {
+    dot.classList.add('speaking');
+    label.textContent = '話し中';
+    isSpeaking = true;
+    setStatus('AIが話しています（話しかけると止まります）');
+    showMicWave(false);
+  } else {
+    dot.classList.add('active');
+    label.textContent = '待機中';
+    setStatus(isAiProactiveSilent ? 'AI能動発話OFF' : `次の確認まで ${intervalSec}s`);
+    if (!isMuted) showMicWave(true);
+  }
+}
+</script>
+</body>
+</html>
