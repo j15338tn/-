@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ドライブAI</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c10;
+    --surface: #111318;
+    --border: #1e2229;
+    --accent: #3d6fff;
+    --accent-dim: rgba(61,111,255,0.15);
+    --accent-glow: rgba(61,111,255,0.4);
+    --text: #e8eaf0;
+    --text-dim: #5a6070;
+    --text-mid: #8a94a8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --red-dim: rgba(239,68,68,0.15);
+    --amber: #f59e0b;
+    --font: 'Inter', system-ui, sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+
+  /* ── Setup ── */
+  #setup { display: flex; flex-direction: column; justify-content: center; padding: 32px 24px; gap: 24px; min-height: 100vh; max-width: 480px; margin: 0 auto; }
+
+  .logo { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 500; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-mid); }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+
+  h1 { font-size: 26px; font-weight: 300; letter-spacing: -0.02em; line-height: 1.2; }
+  h1 span { color: var(--accent); }
+  .desc { font-size: 13px; color: var(--text-mid); line-height: 1.7; }
+
+  .field label { display: block; font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-mid); margin-bottom: 8px; }
+  .field input { width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; font-family: var(--mono); font-size: 13px; color: var(--text); outline: none; transition: border-color 0.2s; }
+  .field input:focus { border-color: var(--accent); }
+  .field input::placeholder { color: var(--text-dim); }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .btn-start { width: 100%; padding: 14px; background: var(--accent); border: none; border-radius: 8px; color: #fff; font-family: var(--font); font-size: 14px; font-weight: 500; cursor: pointer; transition: opacity 0.2s, transform 0.1s; }
+  .btn-start:hover { opacity: 0.9; }
+  .btn-start:active { transform: scale(0.98); }
+
+  /* ── Main ── */
+  #main { display: none; flex-direction: column; height: 100vh; max-width: 480px; margin: 0 auto; }
+
+  #cam-wrap { position: relative; flex: 1; background: #000; overflow: hidden; }
+  #cam { width: 100%; height: 100%; object-fit: cover; display: block; }
+  #cam-canvas { display: none; }
+
+  /* Status bar */
+  #status-bar { position: absolute; top: 0; left: 0; right: 0; padding: 16px; display: flex; justify-content: space-between; align-items: flex-start; background: linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, transparent 100%); }
+  .status-pill { display: flex; align-items: center; gap: 6px; background: rgba(0,0,0,0.5); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 5px 10px; font-size: 11px; font-weight: 500; color: var(--text-mid); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-dim); flex-shrink: 0; }
+  .dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .dot.thinking { background: var(--accent); animation: pulse 1s infinite; }
+  .dot.speaking { background: var(--amber); animation: pulse 0.6s infinite; }
+  .dot.listening { background: var(--green); animation: pulse 1.4s infinite; }
+
+  #location-pill { max-width: 180px; overflow: hidden; }
+  #location-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; display: inline-block; }
+
+  /* Mic visualizer — always-on indicator */
+  #mic-wave {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 24px;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  #mic-wave.visible { opacity: 1; }
+  #mic-wave span {
+    display: block;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--green);
+    animation: wave 0.8s ease-in-out infinite;
+    min-height: 4px;
+  }
+  #mic-wave span:nth-child(1) { animation-delay: 0s; }
+  #mic-wave span:nth-child(2) { animation-delay: 0.1s; }
+  #mic-wave span:nth-child(3) { animation-delay: 0.2s; }
+  #mic-wave span:nth-child(4) { animation-delay: 0.1s; }
+  #mic-wave span:nth-child(5) { animation-delay: 0s; }
+
+  @keyframes wave {
+    0%, 100% { height: 4px; }
+    50% { height: 20px; }
+  }
+
+  /* Timer ring */
+  #timer-wrap { position: absolute; bottom: 16px; right: 16px; }
+  #timer-svg { transform: rotate(-90deg); }
+  #timer-ring { fill: none; stroke: rgba(255,255,255,0.12); stroke-width: 2; }
+  #timer-progress { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linecap: round; stroke-dasharray: 100.53; stroke-dashoffset: 0; transition: stroke-dashoffset 1s linear; }
+  #timer-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-family: var(--mono); color: var(--text-mid); }
+
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  /* Bottom panel */
+  #panel { background: var(--surface); border-top: 1px solid var(--border); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+  #bubble-wrap { min-height: 64px; display: flex; align-items: flex-start; gap: 10px; }
+  #bubble-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-dim); border: 1px solid var(--accent); display: flex; align-items: center; justify-content: center; font-size: 13px; flex-shrink: 0; margin-top: 2px; }
+  #bubble { font-size: 13px; line-height: 1.65; color: var(--text); flex: 1; }
+  #bubble.empty { color: var(--text-dim); font-style: italic; }
+
+  /* Transcript flash */
+  #transcript-row { font-size: 11px; color: var(--text-dim); font-family: var(--mono); min-height: 16px; display: flex; align-items: center; gap: 6px; }
+  #transcript-icon { color: var(--green); flex-shrink: 0; }
+  #transcript-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Controls */
+  .controls { display: flex; gap: 8px; align-items: center; }
+  #status-text { font-size: 11px; color: var(--text-dim); font-family: var(--mono); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .icon-btn {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text-mid);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    font-size: 19px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* Mute: red when active (= muted) */
+  #mute-btn.muted {
+    background: var(--red-dim);
+    border-color: var(--red);
+    color: var(--red);
+  }
+  /* AI-silent: accent when active (= AI won't speak proactively) */
+  #ai-btn.silent {
+    background: rgba(245,158,11,0.12);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .btn-label { font-size: 9px; position: absolute; bottom: 3px; left: 0; right: 0; text-align: center; letter-spacing: 0.04em; font-family: var(--mono); color: inherit; opacity: 0.7; line-height: 1; }
+
+  /* Slider */
+  .slider-row { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--text-dim); }
+  .slider-row input[type=range] { flex: 1; accent-color: var(--accent); height: 2px; }
+  #interval-label { font-family: var(--mono); min-width: 28px; }
+
+  /* Model selector */
+  .model-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .model-card { cursor: pointer; display: block; }
+  .model-card input[type=radio] { display: none; }
+  .model-body {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .model-card input:checked + .model-body {
+    border-color: var(--accent);
+    background: var(--accent-dim);
+  }
+  .model-name { font-size: 12px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  .model-desc { font-size: 11px; color: var(--text-mid); line-height: 1.5; }
+  .model-cost { color: var(--green); font-family: var(--mono); font-size: 10px; }
+  #model-badge { font-family: var(--mono); font-size: 10px; color: var(--text-dim); padding: 2px 8px; border: 1px solid var(--border); border-radius: 10px; white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<!-- Setup -->
+<div id="setup">
+  <div class="logo"><div class="logo-dot"></div>DRIVE AI</div>
+  <h1>景色と話す、<br><span>AI助手</span></h1>
+  <p class="desc">常時マイクONで話しかけるだけ。<br>カメラと位置情報から能動的に話しかけてきます。</p>
+
+  <div class="field">
+    <label>OpenAI APIキー</label>
+    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
+  </div>
+  <div class="field">
+    <label>モデル</label>
+    <div class="model-grid" style="grid-template-columns:1fr 1fr 1fr">
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-5.4-nano" checked>
+        <div class="model-body">
+          <div class="model-name">5.4 nano</div>
+          <div class="model-desc">最安・最速<br><span class="model-cost">~$0.02/時（毎秒）</span></div>
+        </div>
+      </label>
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-4o-mini">
+        <div class="model-body">
+          <div class="model-name">4o mini</div>
+          <div class="model-desc">低コスト<br><span class="model-cost">~$0.05/時（毎秒）</span></div>
+        </div>
+      </label>
+      <label class="model-card">
+        <input type="radio" name="model" value="gpt-4o">
+        <div class="model-body">
+          <div class="model-name">4o</div>
+          <div class="model-desc">高精度<br><span class="model-cost">~$0.76/時（毎秒）</span></div>
+        </div>
+      </label>
+    </div>
+  </div>
+    <div class="field-row">
+    <div class="field">
+      <label>AIの性格</label>
+      <input type="text" id="persona" value="気さくなドライブ仲間" placeholder="例：物知りな旅人">
+    </div>
+    <div class="field">
+      <label>あなたの名前</label>
+      <input type="text" id="username" placeholder="例：なと">
+    </div>
+  </div>
+  <div class="field">
+    <label>AIの声</label>
+    <div class="model-grid" style="grid-template-columns:repeat(3,1fr)">
+      <label class="model-card"><input type="radio" name="voice" value="nova" checked><div class="model-body"><div class="model-name">Nova</div><div class="model-desc">明るい女性</div></div></label>
+      <label class="model-card"><input type="radio" name="voice" value="alloy"><div class="model-body"><div class="model-name">Alloy</div><div class="model-desc">落ち着いた中性</div></div></label>
+      <label class="model-card"><input type="radio" name="voice" value="echo"><div class="model-body"><div class="model-name">Echo</div><div class="model-desc">低めの男性</div></div></label>
+      <label class="model-card"><input type="radio" name="voice" value="fable"><div class="model-body"><div class="model-name">Fable</div><div class="model-desc">温かい女性</div></div></label>
+      <label class="model-card"><input type="radio" name="voice" value="onyx"><div class="model-body"><div class="model-name">Onyx</div><div class="model-desc">深みのある男性</div></div></label>
+      <label class="model-card"><input type="radio" name="voice" value="shimmer"><div class="model-body"><div class="model-name">Shimmer</div><div class="model-desc">柔らかい女性</div></div></label>
+    </div>
+  </div>
+  <button class="btn-start" onclick="startApp()">ドライブを始める →</button>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <div id="cam-wrap">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="cam-canvas"></canvas>
+
+    <div id="status-bar">
+      <div class="status-pill">
+        <div class="dot active" id="ai-dot"></div>
+        <span id="ai-status">起動中</span>
+      </div>
+      <div id="model-badge">gpt-4o-mini</div>
+      <div class="status-pill" id="location-pill">
+        <span>📍</span>
+        <span id="location-text">取得中…</span>
+      </div>
+    </div>
+
+    <!-- Always-on mic visualizer -->
+    <div id="mic-wave">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <!-- Countdown ring -->
+    <div id="timer-wrap">
+      <svg id="timer-svg" width="36" height="36" viewBox="0 0 36 36">
+        <circle id="timer-ring" cx="18" cy="18" r="16"/>
+        <circle id="timer-progress" cx="18" cy="18" r="16"/>
+      </svg>
+      <div id="timer-label"></div>
+    </div>
+  </div>
+
+  <div id="panel">
+    <div id="bubble-wrap">
+      <div id="bubble-icon">🤖</div>
+      <div id="bubble" class="empty">準備しています…</div>
+    </div>
+
+    <!-- Transcript row: shows what you said -->
+    <div id="transcript-row">
+      <span id="transcript-icon">🎙</span>
+      <span id="transcript-text">話しかけると認識されます</span>
+    </div>
+
+    <div class="controls">
+      <span id="status-text">初期化中</span>
+
+      <!-- Mute: タップでマイクをミュート -->
+      <button class="icon-btn" id="mute-btn" onclick="toggleMute()" title="マイクをミュート">
+        🎤
+        <span class="btn-label">MUTE</span>
+      </button>
+
+      <!-- AI silent: タップでAIの能動的発話を止める -->
+      <button class="icon-btn" id="ai-btn" onclick="toggleAiProactive()" title="AIの能動発話をOFF">
+        💬
+        <span class="btn-label">AI ON</span>
+      </button>
+    </div>
+
+    <div class="slider-row">
+      <span>間隔</span>
+      <input type="range" id="interval-slider" min="3" max="600" value="30" step="1" oninput="updateInterval(this.value)">
+      <span id="interval-label">30s</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let apiKey = '';
+let selectedModel = 'gpt-5.4-nano';
+let selectedVoice = 'nova';
+let persona = '';
+let username = '';
+let stream = null;
+let locationData = { lat: null, lon: null, label: '不明' };
+let conversationHistory = [];
+let intervalSec = 30;
+let countdown = 0;
+let countdownTimer = null;
+let isMuted = false;          // マイクをミュート中
+let isAiProactiveSilent = false; // AIの能動発話をOFF
+let isSpeaking = false;
+let isThinking = false;
+let recognition = null;
+let recognitionActive = false;
+
+// ─── Setup ───────────────────────────────────────────────────────────────────
+async function startApp() {
+  apiKey = document.getElementById('api-key').value.trim();
+  if (!apiKey.startsWith('sk-')) { alert('OpenAI APIキーを入力してください（sk-... から始まるもの）'); return; }
+  persona = document.getElementById('persona').value.trim() || '気さくなドライブ仲間';
+  selectedModel = document.querySelector('input[name="model"]:checked').value;
+  document.getElementById('model-badge').textContent = selectedModel;
+  selectedVoice = document.querySelector('input[name="voice"]:checked').value;
+  username = document.getElementById('username').value.trim() || 'あなた';
+
+  document.getElementById('setup').style.display = 'none';
+  const mainEl = document.getElementById('main');
+  mainEl.style.display = 'flex';
+  mainEl.style.flexDirection = 'column';
+
+  conversationHistory = [{ role: 'system', content: buildSystemPrompt() }];
+
+  await initCamera();
+  initLocation();
+  initContinuousRecognition();
+
+  setTimeout(() => scheduleNext(10), 4000);
+}
+
+function buildSystemPrompt() {
+  return `あなたは${persona}として、ドライブ中の${username}さんの車内にいるAIアシスタントです。
+
+【絶対に守るルール】
+- 友人同士のようなタメ口。敬語なし
+- 返答は1〜2文の短さ（運転中のため）
+- 質問で返さない。感想・気づき・コメントで返す
+- 「〜ある？」「〜どう思う？」のような質問は禁止
+- ${username}さんが話しかけてきたら必ず返答する。SKIPは絶対禁止
+
+【能動的発話（[AIが能動的に話しかけるターン]の場合のみ）】
+- 本当に珍しいものが見えたときだけ、一言感想を言う
+- 普通の景色なら「SKIP」とだけ返す
+- 質問しない。「〜だね」「〜すごいな」のような独り言風に
+
+日本語で話すこと。`;
+}
+
+// ─── Camera ──────────────────────────────────────────────────────────────────
+async function initCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment', width: { ideal: 1280 } }, audio: false
+    });
+    document.getElementById('cam').srcObject = stream;
+  } catch {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      document.getElementById('cam').srcObject = stream;
+    } catch { setBubble('カメラにアクセスできません。ブラウザ設定を確認してください。'); }
+  }
+}
+
+function captureFrame() {
+  const video = document.getElementById('cam');
+  const canvas = document.getElementById('cam-canvas');
+  if (!video.videoWidth) return null;
+  canvas.width = 640;
+  canvas.height = Math.round(640 * video.videoHeight / video.videoWidth);
+  canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.7).split(',')[1];
+}
+
+// ─── Location ────────────────────────────────────────────────────────────────
+function initLocation() {
+  if (!navigator.geolocation) { document.getElementById('location-text').textContent = '非対応'; return; }
+  navigator.geolocation.watchPosition(async pos => {
+    locationData.lat = pos.coords.latitude;
+    locationData.lon = pos.coords.longitude;
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${locationData.lat}&lon=${locationData.lon}&format=json`,
+        { headers: { 'Accept-Language': 'ja' } }
+      );
+      const data = await res.json();
+      const addr = data.address || {};
+      const parts = [addr.city || addr.town || addr.village || addr.county || '', addr.road || addr.suburb || ''].filter(Boolean);
+      locationData.label = parts.join(' ') || data.display_name?.split(',')[0] || '現在地';
+      document.getElementById('location-text').textContent = locationData.label;
+    } catch {
+      locationData.label = `${locationData.lat?.toFixed(3)}, ${locationData.lon?.toFixed(3)}`;
+      document.getElementById('location-text').textContent = locationData.label;
+    }
+  }, () => { document.getElementById('location-text').textContent = '位置情報OFF'; },
+  { enableHighAccuracy: true, maximumAge: 15000 });
+}
+
+// ─── Continuous Speech Recognition ───────────────────────────────────────────
+function initContinuousRecognition() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) {
+    setTranscript('⚠ このブラウザは音声認識非対応');
+    return;
+  }
+
+  recognition = new SR();
+  recognition.lang = 'ja-JP';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  recognition.onstart = () => {
+    recognitionActive = true;
+    if (!isMuted) showMicWave(true);
+  };
+
+  recognition.onresult = (e) => {
+    if (isMuted || isSpeaking) return; // ミュート中 or AI発話中は無視
+
+    let interim = '';
+    let final = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) final += t;
+      else interim += t;
+    }
+
+    if (interim) setTranscript(interim + '…');
+    if (final.trim()) {
+      setTranscript(final.trim());
+      handleUserInput(final.trim());
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error === 'no-speech' || e.error === 'aborted') return;
+    console.warn('SR error:', e.error);
+  };
+
+  recognition.onend = () => {
+    recognitionActive = false;
+    // 自動再起動（ブラウザが止めてしまうため）
+    if (!isMuted) {
+      setTimeout(() => startRecognition(), 300);
+    }
+  };
+
+  startRecognition();
+}
+
+function startRecognition() {
+  if (recognitionActive || isMuted || !recognition) return;
+  try { recognition.start(); } catch {}
+}
+
+function stopRecognitionTemporarily() {
+  // AIが話している間だけ止める
+  if (!recognitionActive || !recognition) return;
+  try { recognition.abort(); } catch {}
+  recognitionActive = false;
+  showMicWave(false);
+}
+
+function resumeRecognition() {
+  if (!isMuted) {
+    setTimeout(() => startRecognition(), 500);
+    showMicWave(true);
+  }
+}
+
+// ─── Mute toggle ─────────────────────────────────────────────────────────────
+function toggleMute() {
+  isMuted = !isMuted;
+  const btn = document.getElementById('mute-btn');
+  btn.textContent = isMuted ? '🔇' : '🎤';
+  btn.innerHTML = (isMuted ? '🔇' : '🎤') + '<span class="btn-label">MUTE</span>';
+  btn.classList.toggle('muted', isMuted);
+
+  if (isMuted) {
+    stopRecognitionTemporarily();
+    showMicWave(false);
+    setTranscript('マイクをミュートしています');
+    setStatus('マイクOFF');
+  } else {
+    startRecognition();
+    showMicWave(true);
+    setTranscript('話しかけると認識されます');
+    setStatus('待機中');
+  }
+}
+
+// ─── AI proactive toggle ─────────────────────────────────────────────────────
+function toggleAiProactive() {
+  isAiProactiveSilent = !isAiProactiveSilent;
+  const btn = document.getElementById('ai-btn');
+  btn.innerHTML = (isAiProactiveSilent ? '🔕' : '💬') + '<span class="btn-label">' + (isAiProactiveSilent ? 'AI OFF' : 'AI ON') + '</span>';
+  btn.classList.toggle('silent', isAiProactiveSilent);
+  setStatus(isAiProactiveSilent ? 'AI能動発話OFF（話しかけには返答）' : '待機中');
+}
+
+// ─── Schedule / Timer ────────────────────────────────────────────────────────
+function scheduleNext(sec) {
+  if (countdownTimer) clearInterval(countdownTimer);
+  countdown = sec;
+  updateTimer();
+  countdownTimer = setInterval(() => {
+    if (isSpeaking || isThinking) return; // カウント停止
+    countdown--;
+    updateTimer();
+    if (countdown <= 0) {
+      clearInterval(countdownTimer);
+      if (!isAiProactiveSilent) analyzeAndSpeak();
+      else scheduleNext(intervalSec);
+    }
+  }, 1000);
+}
+
+function updateInterval(val) {
+  intervalSec = parseInt(val);
+  const label = intervalSec >= 60
+    ? (intervalSec % 60 === 0 ? (intervalSec / 60) + 'm' : (intervalSec / 60).toFixed(1) + 'm')
+    : val + 's';
+  document.getElementById('interval-label').textContent = label;
+}
+
+function updateTimer() {
+  const c = 100.53;
+  document.getElementById('timer-progress').style.strokeDashoffset = c * (1 - Math.max(0, countdown / intervalSec));
+  document.getElementById('timer-label').textContent = isAiProactiveSilent ? '–' : (countdown > 0 ? countdown : '');
+  document.getElementById('timer-progress').style.stroke = isAiProactiveSilent ? 'var(--amber)' : 'var(--accent)';
+}
+
+// ─── AI Analysis (proactive) ─────────────────────────────────────────────────
+async function analyzeAndSpeak() {
+  if (isThinking || isSpeaking) return;
+  const imageB64 = captureFrame();
+  if (!imageB64) { scheduleNext(intervalSec); return; }
+
+  setAiState('thinking');
+  const locationCtx = locationData.lat
+    ? `現在地: ${locationData.label}（緯度${locationData.lat?.toFixed(4)}, 経度${locationData.lon?.toFixed(4)}）`
+    : '位置情報: 不明';
+
+  const userMsg = {
+    role: 'user',
+    content: [
+      { type: 'text', text: `[AIが能動的に話しかけるターン]\n${locationCtx}\n\nカメラに映っている景色・状況を見て、自然に話しかけてください。特に面白いものがなければ「SKIP」とだけ返してください。` },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}`, detail: 'low' } }
+    ]
+  };
+
+  try {
+    const response = await callGPT([...conversationHistory, userMsg]);
+    const text = response.trim();
+    if (text === 'SKIP' || text === '') {
+      setAiState('active');
+      setStatus('変化なし');
+      scheduleNext(intervalSec);
+      return;
+    }
+    conversationHistory.push({ role: 'user', content: `[${locationCtx}] 能動的発話ターン` });
+    conversationHistory.push({ role: 'assistant', content: text });
+    trimHistory();
+    setBubble(text);
+    await speak(text);
+  } catch (e) {
+    console.error(e);
+    setStatus('エラー: ' + e.message);
+    setAiState('active');
+    scheduleNext(intervalSec);
+  }
+}
+
+// ─── User input handler ───────────────────────────────────────────────────────
+async function handleUserInput(text) {
+  if (!text.trim() || isThinking) return;
+
+  if (isSpeaking) stopCurrentSpeech();
+
+  setAiState('thinking');
+  const imageB64 = captureFrame();
+  const locationCtx = locationData.lat ? `現在地: ${locationData.label}` : '';
+
+  // ユーザー発言専用メッセージ：SKIPを返さないよう明示＋カメラ映像も含める
+  const locationStr = locationCtx ? `現在地: ${locationCtx}` : '';
+  const userContent = imageB64 ? [
+    { type: 'text', text: `[ユーザーからの発言。必ず返答すること。SKIPは禁止。カメラに映っている景色・状況も踏まえて返答してよい]${locationStr ? ' ' + locationStr : ''}
+ユーザー: ${text}` },
+    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageB64}`, detail: 'low' } }
+  ] : `[ユーザーからの発言。必ず返答すること。SKIPは禁止]
+ユーザー: ${text}`;
+
+  conversationHistory.push({ role: 'user', content: userContent });
+
+  try {
+    const response = await callGPT(conversationHistory);
+    // SKIPが返ってきても強制的に返答させる
+    const finalResponse = (response.trim() === 'SKIP' || response.trim() === '')
+      ? 'うん、聞こえてるよ！'
+      : response;
+    conversationHistory.push({ role: 'assistant', content: finalResponse });
+    trimHistory();
+    setBubble(finalResponse);
+    await speak(finalResponse);
+  } catch (e) {
+    setStatus('エラー: ' + e.message);
+    setAiState('active');
+    scheduleNext(intervalSec);
+  }
+}
+
+// ─── GPT ─────────────────────────────────────────────────────────────────────
+async function callGPT(messages) {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: selectedModel, messages, max_tokens: 200, temperature: 0.85 })
+  });
+  if (!res.ok) { const err = await res.json(); throw new Error(err.error?.message || 'API error'); }
+  const data = await res.json();
+  return data.choices[0].message.content;
+}
+
+// ─── TTS ─────────────────────────────────────────────────────────────────────
+let currentAudio = null;
+let speakAborted = false;
+
+async function speak(text) {
+  setAiState('speaking');
+  stopRecognitionTemporarily();
+  speakAborted = false;
+
+  // GPTの返答をバブルに表示した後、並行してTTSリクエスト開始
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/speech', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: 'tts-1', input: text, voice: selectedVoice, speed: 1.1 })
+    });
+    if (!res.ok) throw new Error('TTS failed');
+    const arrayBuffer = await res.arrayBuffer();
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+    const source = audioCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(audioCtx.destination);
+    currentAudio = source;
+    await new Promise((resolve) => {
+      source.onended = resolve;
+      source.start(0);
+    });
+    audioCtx.close();
+    currentAudio = null;
+  } catch {
+    await speakWebSpeech(text);
+  }
+
+  if (!speakAborted) {
+    setAiState('active');
+    resumeRecognition();
+    scheduleNext(intervalSec);
+  }
+}
+
+function stopCurrentSpeech() {
+  speakAborted = true;
+  if (currentAudio) {
+    try { currentAudio.stop(); } catch {}
+    try { currentAudio.pause(); } catch {}
+    currentAudio = null;
+  }
+  window.speechSynthesis?.cancel();
+  isSpeaking = false;
+}
+
+function speakWebSpeech(text) {
+  return new Promise(resolve => {
+    if (!window.speechSynthesis) { resolve(); return; }
+    speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'ja-JP';
+    utt.rate = 1.1;
+    const voices = speechSynthesis.getVoices().filter(v => v.lang.startsWith('ja'));
+    if (voices.length) utt.voice = voices[0];
+    utt.onend = resolve;
+    utt.onerror = resolve;
+    speechSynthesis.speak(utt);
+  });
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function trimHistory() {
+  if (conversationHistory.length > 22) {
+    conversationHistory = [conversationHistory[0], ...conversationHistory.slice(-20)];
+  }
+}
+
+function showMicWave(on) {
+  document.getElementById('mic-wave').classList.toggle('visible', on);
+}
+
+function setBubble(text) {
+  const el = document.getElementById('bubble');
+  el.textContent = text;
+  el.classList.remove('empty');
+}
+
+function setTranscript(text) {
+  document.getElementById('transcript-text').textContent = text;
+}
+
+function setStatus(text) {
+  document.getElementById('status-text').textContent = text;
+}
+
+function setAiState(state) {
+  const dot = document.getElementById('ai-dot');
+  const label = document.getElementById('ai-status');
+  dot.className = 'dot';
+  isThinking = false;
+  isSpeaking = false;
+
+  if (state === 'thinking') {
+    dot.classList.add('thinking');
+    label.textContent = '考え中';
+    isThinking = true;
+    setStatus('応答生成中…');
+    showMicWave(false);
+  } else if (state === 'speaking') {
+    dot.classList.add('speaking');
+    label.textContent = '話し中';
+    isSpeaking = true;
+    setStatus('AIが話しています（話しかけると止まります）');
+    showMicWave(false);
+  } else {
+    dot.classList.add('active');
+    label.textContent = '待機中';
+    setStatus(isAiProactiveSilent ? 'AI能動発話OFF' : `次の確認まで ${intervalSec}s`);
+    if (!isMuted) showMicWave(true);
+  }
+}
+</script>
+</body>
+</html>
